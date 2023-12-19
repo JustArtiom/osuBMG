@@ -1,0 +1,24 @@
+{
+    "train": {
+        "path": "__train__",
+
+        "n_fft": 1024,
+        "n_mels": 64,
+        "audio_limit": 0,
+
+        "objects_len": 0,
+        "slider_len": 0,
+
+        "time_span": 100,
+        "epochs": 300,
+        "batch": 64,
+        "out_path": "tests"
+    },
+
+    "use": {
+        "model_path": "tests/3/model.h5",
+
+        "audio_path": "__train__/1124391 LiSA - ROCK-mode/audio.mp3",
+        "out_file_path": "/"
+    }
+}
