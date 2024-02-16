@@ -14,17 +14,22 @@ print("")
 print(f"Training directory set to:   {config['training_path']}")
 print(f"Output directory set to:     {config['output_path']}")
 print("")
-print("Loading Training set...")
 
+# Loading the spectrograms and parsed osu files
+print("Loading Training set...")
 print("")
 audios, maps = trainset.load(config['training_path'], log=True)
 print("")
 
+# Pad the spectograms to get them to the same size
 audios = audio_prep.pad_spectrograms(audios)
 
+# Convert the osu files into an array of timing points of when a beat should be played
 maps = [[round(hit_object[2] / config["hop_length"]) for hit_object in osu_map["HitObjects"]]
         for osu_map in maps]
 
+# Convert the array of timing points into a array of
+# 1 and 0 when the beat should be played for each hop_length
 max_len = audios.shape[2]
 tmp_maps = []
 for osu_map in maps:
@@ -34,7 +39,7 @@ for osu_map in maps:
     tmp_maps.append(zero_map)
 maps = np.array(tmp_maps)
 
-# Apply the maximum in case it exceeds the limit
+# Apply the maximum in case it exceeds the limit in the configuration
 max_value = int((config["max_len"] or max_len) / config["hop_length"])
 audios = audios[:, :, :max_value]
 audios = audios.transpose(0, 2, 1)
