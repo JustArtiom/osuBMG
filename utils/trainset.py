@@ -1,57 +1,54 @@
-from . import tools, osu_prep, audio_prep
+from . import osu_prep, audio_prep, tools
 import os
 
 
 # Load Training set function
-# Returns 2 arrays with an already converted mp3 file to a spectrogram
-# and decoded osu file
-def load(log=True):
-    # Load config.json
-    config = tools.load_json_file("config.json")
+# Returns 2 arrays: parsed osu data and spectrogram of the audio
+def load(path: str, log=True):
+    config = tools.load_json()
 
-    # Variables to store the X and y axis for training
-    X = []
-    y = []
+    # Initialize variables for storing data
+    audios = []
+    maps = []
 
-    # Loop trough the folders
-    for folder in os.listdir(config["train"]["path"]):
-        # Get the folder path in the current folder that we are in
-        folder_path = os.path.join(config["train"]["path"], folder)
-
-        # If the path is not a dir (but is a file) just skip it
+    # Loop trough the training folder
+    for folder in os.listdir(path):
+        # Get the dir we are currently working in
+        folder_path = os.path.join(path, folder)
+        # If the path is not a directory just skip it
         if not os.path.isdir(folder_path):
             continue
 
-        # Load the mp3 file found (if found)
+        # Get the mp3 file name if exists
         mp3_file = next((f for f in os.listdir(folder_path)
                          if f.lower().endswith(".mp3")), None)
-        # Load the osu file found (if foundc)
+        # Get the osu file name if exists
         osu_file = next((f for f in os.listdir(folder_path)
                          if f.lower().endswith(".osu")), None)
 
-        # If there is no osu file or mp3 file just skip
         if not mp3_file or not osu_file:
             continue
 
-        # Decode the osu file
-        decoded_osu_file = osu_prep.decode_file(
-            os.path.join(folder_path, osu_file))
+        # Get the paths of the training data
+        osu_file_path = os.path.join(folder_path, osu_file)
+        audio_file_path = os.path.join(folder_path, mp3_file)
 
-        # Allow only osu game mode files
-        if (decoded_osu_file["General"]["Mode"] != 0):  # Osu mode only!
+        # Parse the osu file
+        decoded_osu_file = osu_prep.parse(osu_file_path)
+
+        # Filter the maps that are not in osu! mode
+        if (decoded_osu_file["General"]["Mode"] != 0):
             continue
 
-        # Log the current folder we are manipulating
         if log:
             print(osu_file)
 
-        # Convert and append the mp3 file to the X axis as a spectrogram in db
-        X.append(audio_prep.create_spectrogram(
-            os.path.join(folder_path, mp3_file),
-            config["train"]["n_fft"],
-            config["train"]["n_mels"]))
-        # Append to the decoded y axis to the y axis
-        y.append(decoded_osu_file)
+        maps.append(decoded_osu_file)
+        audios.append(audio_prep.create_spectrogram(
+            file_path=audio_file_path,
+            hop_length=config["hop_length"],
+            n_fft=config["n_fft"],
+            n_mels=config["n_mels"]
+        ))
 
-    # Return the training axes
-    return X, y
+    return audios, maps

@@ -1,94 +1,44 @@
-from utils import tools, trainset, osu_prep, audio_prep
-import numpy as np
-
+from keras.callbacks import ModelCheckpoint, EarlyStopping
+import tensorflow as tf
 from keras.models import Sequential
-from keras.layers import Dense, LSTM, Activation
-from keras.optimizers import RMSprop
+from keras.layers import Conv2D, MaxPooling2D, Reshape, Flatten, LSTM, Dense, TimeDistributed, BatchNormalization, Dropout
+import numpy as np
+from utils import tools, trainset, audio_prep
 
-# Load config.json
-config = tools.load_json_file("config.json")
+config = tools.load_json()
 
-# Load the training set files (mp3 and .osu files)
-print("\nLoading training beatmaps:\n")
-audios, maps = trainset.load()
+print("")
+print(f"Welcome to BMG!osu")
+print(f"Training script version:     {config['version']}")
+print("")
+print(f"Training directory set to:   {config['training_path']}")
+print(f"Output directory set to:     {config['output_path']}")
+print("")
+print("Loading Training set...")
 
-# Get the maximum audio lengths of all the files in ms
-max_len = max([x.shape[1] for x in audios])
+print("")
+audios, maps = trainset.load(config['training_path'], log=True)
+print("")
 
-# Loop trough all the audio files and
-# Pad/normalise them to the max audio len existing
-for X_idx, x_mp3 in enumerate(audios):
-    audios[X_idx] = audio_prep.normalise(x_mp3, max_len)
+audios = audio_prep.pad_spectrograms(audios)
 
-# Loop trough all maps (y axis) and convert
-# and normalise them with the max audio len existing
-for y_idx, y_map in enumerate(maps):
-    maps[y_idx] = osu_prep.normalise(y_map, max_len=max_len)
+maps = [[round(hit_object[2] / config["hop_length"]) for hit_object in osu_map["HitObjects"]]
+        for osu_map in maps]
 
-# Convert the lists into numpy arrays
-audios = np.array(audios, dtype=float)
-maps = np.array(maps, dtype=str)
+max_len = audios.shape[2]
+tmp_maps = []
+for osu_map in maps:
+    zero_map = np.zeros((max_len), dtype=int)
+    for tp in osu_map:
+        zero_map[tp] = 1
+    tmp_maps.append(zero_map)
+maps = np.array(tmp_maps)
 
-# Flat the array
-map_tokens = maps.flatten()
-# Generate a new array with unique map_tokens
-map_uniq_tokens = np.unique(map_tokens)
-# Generate indexes for each unique token
-map_idx_tokens = {v: i for i, v in enumerate(map_uniq_tokens)}
+# Apply the maximum in case it exceeds the limit
+max_value = int((config["max_len"] or max_len) / config["hop_length"])
+audios = audios[:, :, :max_value]
+audios = audios.transpose(0, 2, 1)
+maps = maps[:, :max_value]
 
-# Get the time_span which determines how long should the short term memory last
-time_span = config["train"]["time_span"]
-
-# Convert the maps values from strings to idexes
-maps = np.reshape([map_idx_tokens[i] for i in map_tokens], maps.shape)
-
-# Get training data (concate the audio with the map)
-training = np.concatenate((audios, maps), axis=1)
-
-# Generate X and y axis
-# X axis respresents a timespan with audio values and beatmap hitobjects and timingpoints
-input_train = []
-# Y axis represents the prediction of the next hitpoint and hitobject based on X axis
-predit_train = []
-
-# Loop trough all training sets
-for train_idx, train in enumerate(training):
-    # HARD TO EXPLAIN, BUT:
-    # Loop trough each milisecond - time_span
-    for i in range(max_len - time_span):
-        if i < 0:
-            continue
-        # Add training set which is time_span long in ms
-        input_train.append(train[:, i:i + time_span])
-        # Add the next predicted hitobject and
-        predit_train.append(train[-2:, i + time_span])
-
-
-# Create X and Y axis
-X = np.zeros((len(input_train), len(input_train[0]), time_span), dtype=float)
-y = np.zeros((len(predit_train), 2, len(map_idx_tokens)), dtype=bool)
-
-# Loop trough the predict_train
-for i, train in enumerate(predit_train):
-    # Loop between hitobjects and timingpoints
-    for j, idx in enumerate(train):
-        # Add 1 to the right value that needs to be predicted
-        y[i, j, int(idx)] = 1
-
-
-print(X.shape, y.shape)
-
-# Create a model
-model = Sequential()
-
-model.add(LSTM(128, input_shape=(
-    X.shape[1], time_span), return_sequences=True))
-model.add(LSTM(128))
-model.add(Dense(len(map_idx_tokens) * 2))
-model.add(Activation("softmax"))
-
-model.compile(loss="categorical_crossentropy", optimizer=RMSprop(
-    learning_rate=0.01), metrics=["accuracy"])
-model.fit(X, y.reshape(y.shape[0], -1),
-          batch_size=128, epochs=10, shuffle=True)
-model.save("model.h5")
+print(f"Audio files with a shape of: {audios.shape}")
+print(f"Osu maps with a shape of: {maps.shape}")
